@@ -40,9 +40,14 @@ func startVault(t *testing.T) string {
 		image = "hashicorp/vault:latest"
 	}
 
-	out, err := exec.Command("docker", "run", "-d", "--rm", "-p", "127.0.0.1::8200", image,
-		"server", "-dev", "-dev-root-token-id=root", "-dev-listen-address=0.0.0.0:8200").CombinedOutput()
-	require.NoError(t, err, string(out))
+	// stdout only: on a first run docker pulls the image and writes its
+	// progress to stderr, which would otherwise end up in the container id
+	var stderr strings.Builder
+	run := exec.Command("docker", "run", "-d", "--rm", "-p", "127.0.0.1::8200", image,
+		"server", "-dev", "-dev-root-token-id=root", "-dev-listen-address=0.0.0.0:8200")
+	run.Stderr = &stderr
+	out, err := run.Output()
+	require.NoError(t, err, stderr.String())
 
 	id := strings.TrimSpace(string(out))
 	t.Cleanup(func() { _ = exec.Command("docker", "rm", "-f", id).Run() })
