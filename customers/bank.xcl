@@ -1,0 +1,36 @@
+# A large retail bank after a platform programme: about 1,600 engineers in some
+# 200 teams, under four business lines (the VPs under the CTO): retail banking,
+# wealth, corporate and investment banking, and enterprise technology. Four
+# environments, because change goes through system and user acceptance testing
+# before production.
+#
+# Vault was rebuilt top down by a central platform team after an audit, so the
+# whole estate follows one standard: an Enterprise cluster with a namespace per
+# business line and, inside it, a namespace per app, environment first. It is
+# uniform, large and deep. Core banking still runs on VMs, the digital channels
+# on Kubernetes, and a tail of legacy systems hold long-lived tokens. Most apps
+# own a database.
+#
+# The same standard covers access: one templated policy per login method,
+# filled in from each app's identity, across four Kubernetes clusters.
+# People's identities aren't managed; their policies sit on their logins.
+#
+# Large and single model: scale without mess.
+
+cluster "bank" {
+  edition      = "enterprise"
+  industry     = "banking"
+  environments = ["dev", "sit", "uat", "prod"]
+  seed         = 1
+
+  model "platform-standard" {
+    apps      = 600
+    namespace = "per-unit/per-app"
+    env       = "first"
+    platforms = { vm = "45%", kubernetes = "45%", legacy = "10%" }
+    databases = "70%"
+
+    kubernetes_clusters = 4
+    policies            = { templated = "100%" }
+  }
+}

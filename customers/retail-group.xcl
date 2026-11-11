@@ -1,0 +1,86 @@
+# A retail group grown by acquisition: about 1,900 engineers in some 230
+# teams, running stores, online, logistics and the brands it bought along the
+# way. One Enterprise cluster that nobody has ever cleaned up.
+#
+# Vault arrived bottom up and every era left its layer behind:
+#
+#   root-splatter   the first teams put everything in root with team prefixes,
+#                   environment after the app; mostly VMs and legacy tokens
+#   bu-namespaces   a reorganisation gave each business unit a namespace, with
+#                   the environment first, by then a mix of VMs and Kubernetes
+#   acquired        a business bought later moved in with its secrets as they
+#                   were: one set, no environments in the path
+#   app-namespaces  newer teams were given a namespace per app inside their
+#                   unit's, mostly on Kubernetes and serverless
+#   ai-services     the AI wave: every new service in a namespace of its own
+#                   at the top level, wherever the team sat
+#
+# Access is as layered: the early eras are mostly legacy policies (shared
+# logins, wildcards, sudo), the business units half tidy, the newer teams
+# templated, with Kubernetes clusters and AWS accounts multiplying per era.
+# The newer teams' people log in at the root rather than in their unit. An
+# identity programme gave everyone an entity and put policies on groups.
+#
+# Large and a mess: every shape at once, side by side, often in the same
+# part of the org.
+
+cluster "retail-group" {
+  edition      = "enterprise"
+  industry     = "retail"
+  environments = ["dev", "staging", "prod"]
+  seed         = 1
+  identity     = true
+
+  model "root-splatter" {
+    apps      = 180
+    namespace = "none"
+    env       = "after-app"
+    platforms = { vm = "50%", legacy = "35%", kubernetes = "15%" }
+    databases = "60%"
+    policies  = { legacy = "70%", per-app = "30%" }
+  }
+
+  model "bu-namespaces" {
+    apps      = 240
+    namespace = "per-unit"
+    env       = "first"
+    platforms = { kubernetes = "50%", vm = "40%", legacy = "10%" }
+    databases = "50%"
+    policies  = { per-app = "60%", legacy = "40%" }
+  }
+
+  model "acquired" {
+    apps      = 60
+    namespace = "per-unit"
+    env       = "none"
+    platforms = { vm = "70%", legacy = "30%" }
+    databases = "60%"
+    policies  = { legacy = "100%" }
+  }
+
+  model "app-namespaces" {
+    apps      = 150
+    namespace = "per-unit/per-app"
+    env       = "after-app"
+    platforms = { kubernetes = "70%", lambda = "20%", vm = "10%" }
+    databases = "40%"
+
+    kubernetes_clusters = 3
+    aws_accounts        = 3
+    aws_mounts          = "per-account"
+    policies            = { templated = "50%", per-app = "50%" }
+    user_auth           = "root"
+  }
+
+  model "ai-services" {
+    apps      = 70
+    namespace = "per-app"
+    env       = "first"
+    platforms = { kubernetes = "60%", lambda = "40%" }
+    databases = "20%"
+
+    kubernetes_clusters = 2
+    aws_accounts        = 2
+    policies            = { templated = "100%" }
+  }
+}

@@ -1,0 +1,29 @@
+# A seed-stage SaaS startup: about 25 people, 9 of them engineers in three
+# teams that report straight to the CTO. There's no staging yet, just dev and
+# prod.
+#
+# The first DevOps hire set Vault up over a weekend: one community cluster,
+# one shared secret/ mount, environment first, the layout every getting-started
+# guide shows. Nothing has been reorganised since because nothing has needed to
+# be. Almost everything runs on Kubernetes, with a couple of serverless
+# functions; only a few apps have a database of their own.
+#
+# Small and single model: the simplest estate the router will meet. It uses
+# none of the Vault settings (see noths.xcl), so it shows the defaults: one
+# Kubernetes cluster, one AWS account, tidy per-app policies, no managed
+# identity.
+
+cluster "startup" {
+  edition      = "community"
+  industry     = "saas"
+  environments = ["dev", "prod"]
+  seed         = 1
+
+  model "everything" {
+    apps      = 9
+    namespace = "none"
+    env       = "first"
+    platforms = { kubernetes = "80%", lambda = "20%" }
+    databases = "30%"
+  }
+}

@@ -1,0 +1,123 @@
+# A UK curated online marketplace: about 50 engineers, a Rails monolith part
+# way through being split into services. The template for describing a
+# customer's Vault estate.
+#
+# A cluster is sized by the apps it serves. From the app count the generator
+# works out the org: teams of about 8 running ~3 apps each, with every manager
+# having up to 4 reports, layer on layer up to the CTO. The models then take
+# the apps in order, oldest first, so each lands on the part of the org its
+# size fills.
+#
+#   industry    the business the org is in, which names its units, groups
+#               and teams from that industry's business capabilities:
+#               retail, banking (modelled on BIAN's service domains), saas or
+#               fintech. The deeper the org, the more of the taxonomy it uses:
+#               domains, then areas, then capabilities, then capability-
+#               qualifier teams such as checkout-web and checkout-api.
+#
+# A model says two things, and the path follows from them:
+#
+#   namespace   where namespaces sit:
+#                 none              everything in root, the org path as folders
+#                 per-unit          a namespace per unit (the layer under the CTO)
+#                 per-app           a namespace per app
+#                 per-unit/per-app  app namespaces nested in unit namespaces
+#               Namespaces are enterprise only: on community edition each one
+#               is a cluster of its own.
+#
+#   env         where the environment goes in the path:
+#                 none              left out: one set of secrets
+#                 first             env/<folders>/<app>/<thing>/<secret>
+#                 after-app         <folders>/<app>/env/<thing>/<secret>
+#
+# Each namespace has one KV v2 mount, secret/. In it come the part of the org
+# path the namespace doesn't capture, then the app (unless it has a namespace
+# of its own), then the thing and the secret: config/settings, api/key, and
+# for apps with a database a credential per database role: db/read,
+# db/read-write and db/admin.
+#
+# Access is a simple example, the same for every customer: the app reads its
+# config, API key and read-write database credential; its team's developers
+# manage its config and API key and read the read-only database credential;
+# its team's tester reads its config and API key; the ops engineers of its ops
+# group (the DBAs) manage all three database credentials and read its config;
+# and the group's manager reads everything. PMs log in but read nothing.
+#
+# The people follow from the org: every team has 2 to 8 developers, a tester
+# and a PM. The manager above each team, with the up to 4 teams under them
+# and two ops engineers, is an ops group; ops groups are gathered 4 at a time
+# under an ops manager, who has the access of all their ops engineers.
+#
+#   platforms   where the model's apps run, as percentages adding up to 100%,
+#               assigned to apps at random
+#
+#   databases   the percentage of a model's apps that own a database
+#
+# Percentages are written with a percent sign, i.e. "50%".
+#
+# The rest say how the customer's Vault is configured, for vault-estate
+# generate. All are optional:
+#
+#   identity             (cluster) whether people have entities, aliases and
+#                        groups, with their policies coming through the
+#                        groups; default false, policies on their logins
+#
+#   kubernetes_clusters  how many Kubernetes clusters the model's Kubernetes
+#                        apps are spread over, each with its own auth mount;
+#                        default 1
+#
+#   aws_accounts         how many AWS accounts the model's Lambda apps are
+#                        spread over; default 1
+#
+#   aws_mounts           how Lambda apps log in: shared (one AWS auth mount
+#                        for every account) or per-account; default shared
+#
+#   policies             the share of the model's ops groups using each
+#                        policy style, as percentages adding up to 100%;
+#                        default { per-app = "100%" }:
+#                          per-app    tidy: a policy per app and environment,
+#                                     per team role and per ops group,
+#                                     granting exactly the access above
+#                          templated  one policy per login method, filled in
+#                                     from the app's or person's identity
+#                          legacy     the mess real estates have: a shared
+#                                     login, wildcards, sudo, deny carve-outs,
+#                                     dead and orphaned policies
+#                        Every team, app and person in an ops group shares its
+#                        group's style.
+#
+#   user_auth            where people log in on enterprise: root, or unit
+#                        (only for models with a namespace per unit); default
+#                        unit for per-unit and per-unit/per-app, root otherwise
+
+cluster "noths" {
+  edition      = "community"                 # community | enterprise
+  industry     = "retail"                    # retail | banking | saas | fintech
+  environments = ["dev", "staging", "prod"]
+  seed         = 1                           # names, platforms and databases are random
+  identity     = true                        # people get entities and groups
+
+  # the original layout: team prefixes in root, the environment after the app
+  model "original" {
+    apps      = 14
+    namespace = "none"
+    env       = "after-app"
+    platforms = { vm = "50%", legacy = "40%", kubernetes = "10%" }
+    databases = "50%"
+    policies  = { legacy = "100%" }          # the early days' shared logins and wildcards
+  }
+
+  # what came later, laid out environment first
+  model "newer" {
+    apps      = 6
+    namespace = "none"
+    env       = "first"
+    platforms = { kubernetes = "70%", lambda = "30%" }
+    databases = "50%"
+
+    kubernetes_clusters = 2
+    aws_accounts        = 2
+    aws_mounts          = "per-account"
+    policies            = { templated = "100%" }
+  }
+}
