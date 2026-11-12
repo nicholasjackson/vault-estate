@@ -1,7 +1,7 @@
 # vault-estate in a container: the static binary on distroless, which
 # carries CA certificates for Vault over TLS and runs as nonroot.
 #
-#   docker run --rm ghcr.io/nicholasjackson/vault-estate show -name noths
+#   docker run --rm ghcr.io/nicholasjackson/vault-estate show /examples/noths.xcl
 #
 # The binary is cross-compiled on the build platform, so a multi-platform
 # build needs no emulation.
@@ -23,6 +23,7 @@ RUN CGO_ENABLED=0 GOOS=$TARGETOS GOARCH=$TARGETARCH \
 FROM gcr.io/distroless/static-debian13:nonroot
 
 COPY --from=build /out/vault-estate /usr/local/bin/vault-estate
+COPY examples /examples
 
 WORKDIR /work
 

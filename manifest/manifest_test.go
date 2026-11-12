@@ -33,7 +33,7 @@ var built = struct {
 func customerConfig(t *testing.T, name string) estate.Config {
 	t.Helper()
 
-	cfgs, err := estate.Load("../customers")
+	cfgs, err := estate.Load("../examples")
 	require.NoError(t, err)
 
 	for _, c := range cfgs {

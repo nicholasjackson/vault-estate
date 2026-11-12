@@ -19,16 +19,17 @@ Or run the container image, `ghcr.io/nicholasjackson/vault-estate` (see
 [Using the container](#using-the-container)).
 
 ```bash
-vault-estate show -name noths                         # the whole estate, as a tree
-vault-estate generate -name noths -out noths.json     # its Vault configuration, as a manifest
+vault-estate show examples/noths.xcl                       # the whole estate, as a tree
+vault-estate generate examples/noths.xcl -out noths.json   # its Vault configuration, as a manifest
 vault-estate apply -manifest noths.json -addr noths=http://127.0.0.1:8200 -token root
 ```
 
 ## Customers
 
-Customers are `cluster` blocks in xcl. Five examples are built in, from
-`customers/`: `startup`, `noths`, `scaleup`, `bank` and `retail-group`. Give
-your own file or folder with `-customers`.
+Customers are `cluster` blocks in xcl. `show` and `generate` take an xcl file,
+or a folder of them; when it holds more than one customer, pick one with
+`-name`. There are five examples in `examples/`: `startup`, `noths`, `scaleup`,
+`bank` and `retail-group`.
 
 A cluster block gives the edition, the industry (which names the teams and
 apps), the environments and a seed; each `model` block is a set of apps laid
@@ -122,12 +123,13 @@ Every team, app and person in an ops group shares its group's style:
   marked in the manifest with its quirk.
 
 ```bash
-vault-estate show -name noths                  # the whole estate, as a tree
-vault-estate show -name noths -level mount     # namespace | mount | app | secret
-vault-estate show -name noths -json            # the same, as JSON
+vault-estate show examples/noths.xcl                  # the whole estate, as a tree
+vault-estate show examples/noths.xcl -level mount     # namespace | mount | app | secret
+vault-estate show examples/noths.xcl -json            # the same, as JSON
+vault-estate show examples -name noths                # a customer from a folder
 ```
 
-See `customers/noths.xcl` for the template. The same customer and seed
+See `examples/noths.xcl` for the template. The same customer and seed
 always lay out the same estate, and generate the same manifest.
 
 ## Standing up a customer
@@ -144,9 +146,21 @@ with the same type, such as a dev server's `secret/`.
 docker run --rm -d -p 8210:8200 hashicorp/vault:latest \
   server -dev -dev-root-token-id=root -dev-listen-address=0.0.0.0:8200
 
-vault-estate generate -name noths -out noths.json
+vault-estate generate examples/noths.xcl -out noths.json
 vault-estate apply -manifest noths.json -addr noths=http://127.0.0.1:8210 -token root
 ```
+
+Or start the dev Vault with [jumppad](https://jumppad.dev), at
+`http://localhost:8200` with root token `root` (`jumppad down` removes it):
+
+```bash
+jumppad up ./jumppad
+eval "$(jumppad env)"   # VAULT_ADDR and VAULT_TOKEN
+vault-estate apply -manifest noths.json
+```
+
+With no `-addr`, `apply` sends a customer on one cluster to `$VAULT_ADDR`, and
+`-token` defaults to `$VAULT_TOKEN`.
 
 Every person's username and password are in the manifest, so you can log in
 as any of them (`vault login -method=userpass username=<name>`) and see the
@@ -160,12 +174,15 @@ their namespaces.
 ## Using the container
 
 The image is the binary on distroless, for `linux/amd64` and `linux/arm64`.
-Mount a folder to write the manifest to, and use the host's network to reach
-a Vault on localhost (Linux):
+The examples are in the image at `/examples`. Mount a folder for your own
+customers and to write the manifest to, and use the host's network to reach a
+Vault on localhost (Linux):
 
 ```bash
+docker run --rm ghcr.io/nicholasjackson/vault-estate show /examples/noths.xcl
+
 docker run --rm -v "$PWD:/work" -u "$(id -u)" ghcr.io/nicholasjackson/vault-estate \
-  generate -name noths -out /work/noths.json
+  generate /examples/noths.xcl -out /work/noths.json
 
 docker run --rm --network host -v "$PWD:/work" ghcr.io/nicholasjackson/vault-estate \
   apply -manifest /work/noths.json -addr noths=http://127.0.0.1:8210 -token root

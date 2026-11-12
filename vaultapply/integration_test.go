@@ -77,7 +77,7 @@ func startVault(t *testing.T) string {
 func generate(t *testing.T, name string) *manifest.Manifest {
 	t.Helper()
 
-	cfgs, err := estate.Load("../customers")
+	cfgs, err := estate.Load("../examples")
 	require.NoError(t, err)
 
 	for _, c := range cfgs {

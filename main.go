@@ -1,5 +1,5 @@
 // Command vault-estate lays out simulated customer Vault estates, described
-// in xcl (the examples in customers are built in), prints them as a tree or
+// in xcl (see the examples folder), prints them as a tree or
 // as JSON, generates a manifest of each customer's Vault configuration, and
 // applies a manifest to empty Vault clusters. See packages estate, manifest
 // and vaultapply.
@@ -16,7 +16,6 @@ import (
 	"strings"
 	"syscall"
 
-	"github.com/nicholasjackson/vault-estate/customers"
 	"github.com/nicholasjackson/vault-estate/estate"
 	"github.com/nicholasjackson/vault-estate/manifest"
 	"github.com/nicholasjackson/vault-estate/vaultapply"
@@ -62,14 +61,15 @@ func usage(w io.Writer) {
 	fmt.Fprint(w, `Usage: vault-estate <command> [flags]
 
 Commands:
-  show      lay out a customer and print its clusters, namespaces, mounts
-            and secrets as a tree, or as JSON with -json
-  generate  write a manifest of a customer's whole Vault configuration as JSON
+  show      <xcl> lay out a customer and print its clusters, namespaces,
+            mounts and secrets as a tree, or as JSON with -json
+  generate  <xcl> write a manifest of a customer's whole Vault configuration
+            as JSON
   apply     apply a manifest to empty Vault clusters, one address per cluster
   version   print the version
 
-The example customers (startup, noths, scaleup, bank, retail-group) are
-built in; give your own with -customers.
+<xcl> is a file or folder of customer cluster blocks, such as
+examples/noths.xcl.
 
 Run "vault-estate <command> -h" for a command's flags.
 `)
@@ -77,17 +77,18 @@ Run "vault-estate <command> -h" for a command's flags.
 
 func show(_ context.Context, args []string) error {
 	fs := flag.NewFlagSet("show", flag.ContinueOnError)
-	dir := fs.String("customers", "", "xcl file or folder of cluster blocks; the built-in examples by default")
+	fs.Usage = commandUsage(fs, "show <xcl file or folder> [flags]")
 	name := fs.String("name", "", "the cluster block to show; required when there is more than one")
 	level := fs.String("level", "secret", "how deep to show: "+strings.Join(estate.Levels, ", "))
 	plain := fs.Bool("plain", false, "no colour")
 	asJSON := fs.Bool("json", false, "print the estate as JSON rather than a tree")
 
-	if err := fs.Parse(args); err != nil {
+	path, err := parsePath(fs, args)
+	if err != nil {
 		return err
 	}
 
-	cfg, err := loadCustomer(*dir, *name)
+	cfg, err := loadCustomer(path, *name)
 	if err != nil {
 		return err
 	}
@@ -107,15 +108,16 @@ func show(_ context.Context, args []string) error {
 
 func generate(_ context.Context, args []string) (err error) {
 	fs := flag.NewFlagSet("generate", flag.ContinueOnError)
-	dir := fs.String("customers", "", "xcl file or folder of cluster blocks; the built-in examples by default")
+	fs.Usage = commandUsage(fs, "generate <xcl file or folder> [flags]")
 	name := fs.String("name", "", "the cluster block to generate; required when there is more than one")
 	out := fs.String("out", "-", "file to write the manifest to; - for standard output")
 
-	if err := fs.Parse(args); err != nil {
+	path, err := parsePath(fs, args)
+	if err != nil {
 		return err
 	}
 
-	cfg, err := loadCustomer(*dir, *name)
+	cfg, err := loadCustomer(path, *name)
 	if err != nil {
 		return err
 	}
@@ -148,24 +150,47 @@ func generate(_ context.Context, args []string) (err error) {
 	return manifest.Write(f, m)
 }
 
-// loadCustomer returns the cluster block called name from the xcl at dir,
-// or its only block when name is empty.
-// An empty dir means the built-in example customers.
-func loadCustomer(dir, name string) (estate.Config, error) {
-	from := dir
-	if dir == "" {
-		from = "the built-in customers"
-
-		tmp, cleanup, err := customers.Extract()
-		if err != nil {
-			return estate.Config{}, err
+// parsePath parses a command's flags and returns its one argument, the xcl
+// file or folder. Flags may come before or after it.
+func parsePath(fs *flag.FlagSet, args []string) (string, error) {
+	var paths []string
+	for {
+		if err := fs.Parse(args); err != nil {
+			return "", err
 		}
-		defer cleanup()
 
-		dir = tmp
+		if fs.NArg() == 0 {
+			break
+		}
+
+		paths = append(paths, fs.Arg(0))
+		args = fs.Args()[1:]
 	}
 
-	cfgs, err := estate.Load(dir)
+	switch len(paths) {
+	case 0:
+		return "", fmt.Errorf("give the customer's xcl file or folder, such as: vault-estate %s examples/noths.xcl", fs.Name())
+	case 1:
+		return paths[0], nil
+	default:
+		return "", fmt.Errorf("give one xcl file or folder, not %d: %s", len(paths), strings.Join(paths, " "))
+	}
+}
+
+// commandUsage prints a command's usage line and its flags.
+func commandUsage(fs *flag.FlagSet, line string) func() {
+	return func() {
+		fmt.Fprintf(fs.Output(), "Usage: vault-estate %s\n\nFlags:\n", line)
+		fs.PrintDefaults()
+	}
+}
+
+// loadCustomer returns the cluster block called name from the xcl file or
+// folder at path, or its only block when name is empty.
+func loadCustomer(path, name string) (estate.Config, error) {
+	from := path
+
+	cfgs, err := estate.Load(path)
 	if err != nil {
 		return estate.Config{}, err
 	}
@@ -201,7 +226,7 @@ func apply(ctx context.Context, args []string) error {
 	fs := flag.NewFlagSet("apply", flag.ContinueOnError)
 	file := fs.String("manifest", "", "the manifest to apply, from vault-estate generate; - for standard input")
 	addrs := addrFlag{}
-	fs.Var(addrs, "addr", "a cluster's Vault address, as <cluster>=<url>; one for every cluster in the manifest")
+	fs.Var(addrs, "addr", "a cluster's Vault address, as <cluster>=<url>; one for every cluster in the manifest, or $VAULT_ADDR for a manifest of one cluster")
 	token := fs.String("token", os.Getenv("VAULT_TOKEN"), "the token for every cluster; $VAULT_TOKEN by default")
 	workers := fs.Int("workers", 8, "how many secrets to write at once")
 
@@ -229,6 +254,10 @@ func apply(ctx context.Context, args []string) error {
 		return fmt.Errorf("reading %s: %w", *file, err)
 	}
 
+	if err := addrFromEnv(addrs, m, os.Getenv("VAULT_ADDR")); err != nil {
+		return err
+	}
+
 	if err := vaultapply.Apply(ctx, m, vaultapply.Options{Addrs: addrs, Token: *token, Workers: *workers}); err != nil {
 		return err
 	}
@@ -251,6 +280,28 @@ func apply(ctx context.Context, args []string) error {
 		fmt.Printf("%s: %d namespaces, %d mounts, %d policies, %d users, %d secrets\n",
 			c.Name, len(c.Namespaces), mounts, policies, users, secrets)
 	}
+
+	return nil
+}
+
+// addrFromEnv addresses the manifest's only cluster at env, $VAULT_ADDR,
+// when no -addr is given. One address can't stand for more than one cluster.
+func addrFromEnv(addrs addrFlag, m *manifest.Manifest, env string) error {
+	if len(addrs) > 0 || env == "" {
+		return nil
+	}
+
+	if len(m.Clusters) != 1 {
+		var names []string
+		for _, c := range m.Clusters {
+			names = append(names, c.Name)
+		}
+
+		return fmt.Errorf("$VAULT_ADDR is one address, but the manifest has %d clusters: give each with -addr <cluster>=<url>: %s",
+			len(m.Clusters), strings.Join(names, ", "))
+	}
+
+	addrs[m.Clusters[0].Name] = env
 
 	return nil
 }

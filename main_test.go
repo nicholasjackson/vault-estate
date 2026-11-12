@@ -17,7 +17,7 @@ import (
 func TestGenerateWritesAFile(t *testing.T) {
 	for _, name := range []string{"startup", "noths", "scaleup", "bank", "retail-group"} {
 		out := filepath.Join(t.TempDir(), name+".json")
-		require.NoError(t, generate(context.Background(), []string{"-customers", "customers", "-name", name, "-out", out}))
+		require.NoError(t, generate(context.Background(), []string{filepath.Join("examples", name+".xcl"), "-out", out}))
 
 		b, err := os.ReadFile(out)
 		require.NoError(t, err)
@@ -30,14 +30,16 @@ func TestGenerateWritesAFile(t *testing.T) {
 		require.Equal(t, name, m.Customer)
 	}
 
-	err := generate(context.Background(), []string{"-customers", "customers", "-name", "nope"})
+	err := generate(context.Background(), []string{"examples", "-name", "nope"})
 	require.ErrorContains(t, err, `no customer "nope"`)
 }
 
 func TestApplyNeedsAnAddressForEveryCluster(t *testing.T) {
+	t.Setenv("VAULT_ADDR", "")
+
 	// a manifest of four clusters (scaleup), with an address for only one
 	out := filepath.Join(t.TempDir(), "scaleup.json")
-	require.NoError(t, generate(context.Background(), []string{"-customers", "customers", "-name", "scaleup", "-out", out}))
+	require.NoError(t, generate(context.Background(), []string{"examples/scaleup.xcl", "-out", out}))
 
 	var requests atomic.Int32
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
@@ -70,21 +72,72 @@ func TestApplyNeedsAnAddressForEveryCluster(t *testing.T) {
 	require.ErrorContains(t, apply(context.Background(), nil), "-manifest")
 }
 
-func TestGenerateUsesTheBuiltInCustomers(t *testing.T) {
-	// with no -customers, the embedded examples give the same manifest as
-	// the folder they are embedded from
-	builtin := filepath.Join(t.TempDir(), "builtin.json")
-	require.NoError(t, generate(context.Background(), []string{"-name", "noths", "-out", builtin}))
+func TestGenerateTakesAnXCLFileOrFolder(t *testing.T) {
+	// a customer from its file, flags before or after it, and from the
+	// examples folder by name, give the same manifest
+	var manifests []string
+	for _, args := range [][]string{
+		{"examples/noths.xcl"},
+		{"-name", "noths", "examples"},
+		{"examples", "-name", "noths"},
+	} {
+		out := filepath.Join(t.TempDir(), "noths.json")
+		require.NoError(t, generate(context.Background(), append(args, "-out", out)), args)
 
-	folder := filepath.Join(t.TempDir(), "folder.json")
-	require.NoError(t, generate(context.Background(), []string{"-customers", "customers", "-name", "noths", "-out", folder}))
+		b, err := os.ReadFile(out)
+		require.NoError(t, err)
+		manifests = append(manifests, string(b))
+	}
 
-	a, err := os.ReadFile(builtin)
-	require.NoError(t, err)
-	b, err := os.ReadFile(folder)
-	require.NoError(t, err)
-	require.Equal(t, string(b), string(a))
+	require.Equal(t, manifests[0], manifests[1])
+	require.Equal(t, manifests[0], manifests[2])
 
-	err = generate(context.Background(), nil)
-	require.ErrorContains(t, err, "the built-in customers has 5 customers, pick one with -name")
+	// a folder of more than one customer needs -name
+	require.ErrorContains(t, generate(context.Background(), []string{"examples"}), "examples has 5 customers, pick one with -name")
+
+	// and the file or folder is required, once
+	require.ErrorContains(t, generate(context.Background(), nil), "give the customer's xcl file or folder")
+	require.ErrorContains(t, show(context.Background(), nil), "vault-estate show examples/noths.xcl")
+	require.ErrorContains(t, show(context.Background(), []string{"examples/noths.xcl", "examples/bank.xcl"}), "give one xcl file or folder, not 2")
+}
+
+func TestApplyTakesTheAddressFromVaultAddr(t *testing.T) {
+	var requests atomic.Int32
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		requests.Add(1)
+		w.WriteHeader(http.StatusBadRequest)
+	}))
+	defer srv.Close()
+
+	t.Setenv("VAULT_ADDR", srv.URL)
+
+	// a manifest of one cluster (startup) is applied to $VAULT_ADDR
+	startup := filepath.Join(t.TempDir(), "startup.json")
+	require.NoError(t, generate(context.Background(), []string{"examples/startup.xcl", "-out", startup}))
+
+	err := apply(context.Background(), []string{"-manifest", startup, "-token", "root"})
+	require.Error(t, err, "the fake Vault fails every request")
+	require.NotContains(t, err.Error(), "no address")
+	require.NotZero(t, requests.Load(), "$VAULT_ADDR is used")
+
+	// -addr wins over $VAULT_ADDR
+	requests.Store(0)
+	var flagged atomic.Int32
+	other := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		flagged.Add(1)
+		w.WriteHeader(http.StatusBadRequest)
+	}))
+	defer other.Close()
+
+	require.Error(t, apply(context.Background(), []string{"-manifest", startup, "-token", "root", "-addr", "startup=" + other.URL}))
+	require.NotZero(t, flagged.Load(), "-addr is used")
+	require.Zero(t, requests.Load(), "$VAULT_ADDR isn't used")
+
+	// and a manifest of more than one cluster (scaleup) still needs -addr
+	scaleup := filepath.Join(t.TempDir(), "scaleup.json")
+	require.NoError(t, generate(context.Background(), []string{"examples/scaleup.xcl", "-out", scaleup}))
+
+	err = apply(context.Background(), []string{"-manifest", scaleup, "-token", "root"})
+	require.ErrorContains(t, err, "$VAULT_ADDR is one address, but the manifest has 4 clusters")
+	require.Zero(t, requests.Load(), "nothing is written")
 }

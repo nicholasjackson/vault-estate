@@ -3,7 +3,7 @@
 // app count it works out an org (teams, and the managers above them), places
 // each model on the part of the org its app count fills, and lays out the
 // clusters, namespaces, mounts and secrets that result. See
-// customers/noths.xcl for the template.
+// examples/noths.xcl for the template.
 package estate
 
 import (

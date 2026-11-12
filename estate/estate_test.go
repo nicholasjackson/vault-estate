@@ -69,7 +69,7 @@ func join(parts ...string) string {
 }
 
 func TestNOTHSTemplate(t *testing.T) {
-	cfgs, err := Load("../customers/noths.xcl")
+	cfgs, err := Load("../examples/noths.xcl")
 	require.NoError(t, err)
 	require.Len(t, cfgs, 1)
 
@@ -122,10 +122,10 @@ func TestNOTHSTemplate(t *testing.T) {
 	require.Equal(t, want, p.Secrets())
 }
 
-// TestEveryCustomerBuilds keeps the example customers in customers
+// TestEveryCustomerBuilds keeps the example customers in examples
 // valid, and checks each is the shape its description says.
 func TestEveryCustomerBuilds(t *testing.T) {
-	cfgs, err := Load("../customers")
+	cfgs, err := Load("../examples")
 	require.NoError(t, err)
 
 	shapes := map[string]struct {
@@ -409,7 +409,7 @@ func TestNoTwoSecretsShareAPath(t *testing.T) {
 		}
 	}
 
-	cfgs, err := Load("../customers")
+	cfgs, err := Load("../examples")
 	require.NoError(t, err)
 
 	for _, cfg := range cfgs {
@@ -1188,7 +1188,7 @@ cluster "c" {
 func customers(t *testing.T) map[string]*Plan {
 	t.Helper()
 
-	cfgs, err := Load("../customers")
+	cfgs, err := Load("../examples")
 	require.NoError(t, err)
 
 	out := map[string]*Plan{}
