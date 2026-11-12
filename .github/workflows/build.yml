@@ -131,8 +131,12 @@ jobs:
     permissions:
       contents: write
     steps:
+      # only the binaries: the image job's build-push-action also uploads a
+      # .dockerbuild build record, which isn't a release asset (and doesn't
+      # download as one)
       - uses: actions/download-artifact@v4
         with:
+          pattern: vault-estate-*
           path: dist
           merge-multiple: true
 
